@@ -1,17 +1,19 @@
 const mongoose = require("mongoose");
-const config= require("config");
 const dbgr = require("debug")("development:mongoose");
-//Runing command for debuger
-//set DEBUG=development:* delvelopment is a varila whichis consideer as a .env veriable
-//Other wise you can try this set process.env.NODE_ENV=development
+
+// Load environment variables from .env
+require("dotenv").config();
+
+const mongoURI = process.env.MONGODB_URI;
 
 mongoose
-  .connect(`${config.get("MONGODB_URI")}/scatch`)
+  .connect(`${mongoURI}/scatch`)
   .then(function () {
-    dbgr("Connected");
+    dbgr("MongoDB Connected");
   })
   .catch(function (err) {
-    console.log(err);
+    console.error("MongoDB connection error:", err.message);
   });
 
 module.exports = mongoose.connection;
+
