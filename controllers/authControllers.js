@@ -1,112 +1,104 @@
-// Requiring npm packages
-const bcrypt = require("bcryptjs"); // Use bcryptjs for compatibility with deployment
+const bcrypt = require("bcrypt");
 
-// Requiring Database
 const userModel = require("../models/user-model");
 
-// Requiring utils
-const { genrateToken } = require("../utils/genrateToken");
+const generateToken = require("../utils/generateToken");
 
-// Register route
-module.exports.registerUser = async function (req, res) {
-  const { email, password, fullname } = req.body;
+const registerUser = async (req, res) => {
+    try {
+        const validation = userModel.validateUser(req.body);
+        if (validation.error) {
+            req.flash("error", validation.error.details[0].message);
 
-  try {
-    // Check if user exists
-    const existingUser = await userModel.findOne({ email });
-    if (existingUser) {
-      req.flash("error", "You already have an account.");
-      return res.redirect("/");
+            return res.redirect("/");
+        }
+
+        let { fullName, email, password } = req.body;
+
+        let user = await userModel.findOne({ email });
+        if (user) {
+            req.flash("error", "User with this email already exists.");
+
+            return res.redirect("/");
+        }
+
+        bcrypt.genSalt(10, async (err, salt) => {
+            bcrypt.hash(password, salt, async (err, hash) => {
+                if (err) {
+                    req.flash("error", err.message);
+
+                    return res.redirect("/");
+                }
+                else {
+                    let createdUser = await userModel.create({
+                        fullName,
+                        email,
+                        password: hash,
+                    });
+
+                    let token = generateToken(createdUser);
+                    res.cookie("token", token);
+
+                    res.status(201).redirect("/shop");
+                }
+            })
+        })
+
+    } catch (err) {
+        req.flash("error", err.message);
+
+        return res.redirect("/");
     }
+}
 
-    // Hash the password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+const loginUser = async (req, res) => {
+    try {
+        const validation = userModel.validateLogin(req.body);
+        if (validation.error) {
+            req.flash("error", validation.error.details[0].message);
 
-    // Create user
-    const createdUser = await userModel.create({
-      fullname,
-      email,
-      password: hashedPassword,
-    });
+            return res.redirect("/");
+        }
 
-    // Generate and set token
-    const token = genrateToken(createdUser);
-    req.flash("message", "You have registered successfully.");
-    res.cookie("token", token);
-    res.redirect("/shop");
-  } catch (err) {
-    console.error("Registration Error:", err);
-    res.status(500).send("Something went wrong");
-  }
-};
+        let { email, password } = req.body;
 
-// Login route
-module.exports.loginUser = async function (req, res) {
-  const { email, password } = req.body;
+        let user = await userModel.findOne({ email });
+        if (!user) {
+            req.flash("error", "Email or Password is incorrect.");
 
-  try {
-    const user = await userModel.findOne({ email });
+            return res.redirect("/");
+        }
 
-    if (!user) {
-      req.flash("error", "Invalid email or password.");
-      return res.redirect("/");
+        bcrypt.compare(password, user.password, (err, result) => {
+            if (err) {
+                req.flash("error", err.message);
+
+                return res.redirect("/");
+            }
+
+            if (result) {
+                let token = generateToken(user);
+                res.cookie("token", token);
+
+                res.status(200).redirect("/shop");
+            }
+            else {
+                req.flash("error", "Email or Password is incorrect.");
+
+                return res.redirect("/");
+            }
+        })
+    } catch (err) {
+        req.flash("error", err.message);
+
+        return res.redirect("/");
     }
+}
 
-    const isMatch = await bcrypt.compare(password, user.password);
+const logoutUser=async (req, res)=>{
+    res.cookie("token", "");
 
-    if (!isMatch) {
-      req.flash("error", "Invalid email or password.");
-      return res.redirect("/");
-    }
+    res.status(200).redirect("/");
+}
 
-    const token = genrateToken(user);
-    res.cookie("token", token);
-    res.redirect("/shop");
-  } catch (err) {
-    console.error("Login Error:", err);
-    res.status(500).send("Something went wrong");
-  }
-};
-
-// Logout
-module.exports.logout = function (req, res) {
-  res.clearCookie("token");
-  res.redirect("/");
-};
-
-// Get User Profile
-module.exports.user = async function (req, res) {
-  try {
-    const user = await userModel.findOne({ email: req.user.email });
-
-    if (!user) {
-      req.flash("error", "User not found.");
-      return res.redirect("/");
-    }
-
-    const error = req.flash("error");
-    res.render("user.ejs", { user, logedin: true, error });
-  } catch (err) {
-    req.flash("error", "Something went wrong.");
-    return res.redirect("/");
-  }
-};
-
-// Upload User Profile Picture
-module.exports.userupload = async function (req, res) {
-  try {
-    const buffer = req.file.buffer;
-
-    await userModel.findOneAndUpdate(
-      { email: req.user.email },
-      { picture: buffer },
-      { new: true }
-    );
-
-    res.redirect("/users/profile");
-  } catch (err) {
-    req.flash("error", "Image upload failed.");
-    res.redirect("/users/profile");
-  }
-};
+module.exports = { registerUser, loginUser, logoutUser };

@@ -1,19 +1,15 @@
 const mongoose = require("mongoose");
-const dbgr = require("debug")("development:mongoose");
 
-// Load environment variables from .env
-require("dotenv").config();
+const colors = require("colors");
 
-const mongoURI = process.env.MONGODB_URI;
+const connection = async ()=>{
+    try{
+        const conn=await mongoose.connect(process.env.MONGODB_URL);
+        console.log(`Connected to Database: `.yellow + `${conn.connection.host}`.cyan);
+    } catch(err){
+        console.log(`Error Connecting to Database: `.yellow + ` ${err}`.red);
+    }
+}
 
-mongoose
-  .connect(`${mongoURI}/scatch`)
-  .then(function () {
-    dbgr("MongoDB Connected");
-  })
-  .catch(function (err) {
-    console.error("MongoDB connection error:", err.message);
-  });
-
-module.exports = mongoose.connection;
+module.exports = connection;
 
