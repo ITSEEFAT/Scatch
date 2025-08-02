@@ -1,105 +1,112 @@
-//Requireing npm packages
-const bcrypt = require("bcrypt");
+// Requiring npm packages
+const bcrypt = require("bcryptjs"); // Use bcryptjs for compatibility with deployment
 
-//Requireing Database
+// Requiring Database
 const userModel = require("../models/user-model");
 
-//Requireing utils
+// Requiring utils
 const { genrateToken } = require("../utils/genrateToken");
 
-
-//Register routes
+// Register route
 module.exports.registerUser = async function (req, res) {
-  let { email, password, fullname } = req.body;
-
-  //Checking user exist or not.
-  let user = await userModel.findOne({ email: email });
-  if (user) {
-    req.flash("error", "You have already account.");
-    return res.redirect("/");
-  }
+  const { email, password, fullname } = req.body;
 
   try {
-    //password Encryption
-    bcrypt.genSalt(10, (err, salt) => {
-      bcrypt.hash(password, salt, async (err, hash) => {
-        //Creating user
-        let createdUser = await userModel.create({
-          fullname: fullname,
-          email: email,
-          password: hash,
-        });
-
-        //SetingUp cookieparser
-        let token = genrateToken(createdUser);
-        req.flash("message", "You have registerd Sucessfully");
-        res.cookie("token", token);
-        res.redirect("/shop");
-      });
-    });
-  } catch (err) {
-    res.status(err).send("Something Went worng");
-  }
-};
-
-//Login User
-module.exports.loginUser = async function (req, res) {
-  let { email, password } = req.body;
-  let user = await userModel.findOne({ email: email });
-
-  //if user not found
-  if (!user) {
-    req.flash("error", "Email Password Incorrect.");
-    return res.redirect("/");
-  }
-
-  //if user avilable
-  bcrypt.compare(password, user.password, (err, result) => {
-    if (result) {
-      let token = genrateToken(user);
-      res.cookie("token", token);
-      res.redirect("/shop");
-    } else {
-      req.flash("error", "Email Password Incorrect.");
+    // Check if user exists
+    const existingUser = await userModel.findOne({ email });
+    if (existingUser) {
+      req.flash("error", "You already have an account.");
       return res.redirect("/");
     }
-  });
+
+    // Hash the password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create user
+    const createdUser = await userModel.create({
+      fullname,
+      email,
+      password: hashedPassword,
+    });
+
+    // Generate and set token
+    const token = genrateToken(createdUser);
+    req.flash("message", "You have registered successfully.");
+    res.cookie("token", token);
+    res.redirect("/shop");
+  } catch (err) {
+    console.error("Registration Error:", err);
+    res.status(500).send("Something went wrong");
+  }
 };
 
-//Logout User
+// Login route
+module.exports.loginUser = async function (req, res) {
+  const { email, password } = req.body;
+
+  try {
+    const user = await userModel.findOne({ email });
+
+    if (!user) {
+      req.flash("error", "Invalid email or password.");
+      return res.redirect("/");
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      req.flash("error", "Invalid email or password.");
+      return res.redirect("/");
+    }
+
+    const token = genrateToken(user);
+    res.cookie("token", token);
+    res.redirect("/shop");
+  } catch (err) {
+    console.error("Login Error:", err);
+    res.status(500).send("Something went wrong");
+  }
+};
+
+// Logout
 module.exports.logout = function (req, res) {
-  res.cookie("token", "");
+  res.clearCookie("token");
   res.redirect("/");
 };
 
-//User page
-module.exports.user = async (req, res) => {
+// Get User Profile
+module.exports.user = async function (req, res) {
   try {
     const user = await userModel.findOne({ email: req.user.email });
+
     if (!user) {
       req.flash("error", "User not found.");
       return res.redirect("/");
-    } else {
-      let error = req.flash("error");
-      res.render("user.ejs", { user, logedin: true ,error});
     }
-  } catch (error) {
-    req.flash("error","Somthing went Wrong.");
+
+    const error = req.flash("error");
+    res.render("user.ejs", { user, logedin: true, error });
+  } catch (err) {
+    req.flash("error", "Something went wrong.");
     return res.redirect("/");
   }
 };
 
-
-//Uploading Profile pic
+// Upload User Profile Picture
 module.exports.userupload = async function (req, res) {
-  const buffer = req.file.buffer;
-  await userModel.findOneAndUpdate(
-    { email: req.user.email },
-    { picture: buffer },
-    { new: true }
-  );
+  try {
+    const buffer = req.file.buffer;
 
-  res.redirect("/users/profile");
+    await userModel.findOneAndUpdate(
+      { email: req.user.email },
+      { picture: buffer },
+      { new: true }
+    );
+
+    res.redirect("/users/profile");
+  } catch (err) {
+    req.flash("error", "Image upload failed.");
+    res.redirect("/users/profile");
+  }
 };
-
-module.exports.user;

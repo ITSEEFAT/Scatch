@@ -1,30 +1,35 @@
-const express = require("express");
-const router = express.Router();
+const userModel = require("../models/user-model");
+const bcrypt = require("bcryptjs");
 
-//Requireing utilites
-const {
-  registerUser,
-  loginUser,
-  logout,
-  user,
-  userupload,
-} = require("../controllers/authControllers");
-const isLogedIn = require("../middlewares/isLogedIn");
-const upload = require("../config/multer-Config");
+const registerUser = async (req, res) => {
+  const { fullname, email, password, contact } = req.body;
 
-//register routs
-router.post("/register", registerUser);
+  try {
+    // Check if email already exists
+    const existingUser = await userModel.findOne({ email });
+    if (existingUser) {
+      req.flash("error", "Email already registered");
+      return res.redirect("/register");
+    }
 
-//User routes
-router.get("/profile", isLogedIn, user);
+    // Hash the password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-//User Upload images
-router.post("/userupload", upload.single("image"), isLogedIn, userupload);
+    // Create new user with hashed password
+    const newUser = new userModel({
+      fullname,
+      email,
+      password: hashedPassword,
+      contact,
+    });
 
-//Login routs
-router.post("/login", loginUser);
+    await newUser.save();
 
-//Logout routs
-router.get("/logout", isLogedIn, logout);
-
-module.exports = router;
+    req.flash("success", "Registration successful. Please login.");
+    res.redirect("/login");
+  } catch (err) {
+    console.error("Registration error:", err);
+    res.status(500).send("Internal Server Error");
+  }
+};
